@@ -14,7 +14,7 @@ struct Playback
 class PortAudioRead
 {
 public:
-  PortAudioRead(SNDFILE* audioFile, int num_frames, int num_channels/*, uint8_t* lights*/) throw(std::string);
+  PortAudioRead(SNDFILE* audioFile, int num_frames, int num_channels, uint8_t* lights) throw(std::string);
   ~PortAudioRead();
 
   void Start();

@@ -12,6 +12,8 @@
 
 #include <pa_util.h>
 
+#include "EPI.h"
+
 void buildHanWindow(float *window, int size)
 {
    for (int i = 0; i < size ; ++i)
@@ -124,6 +126,9 @@ void computeLighting(float* buffer, int size, PortAudioRead* handler)
     handler->lights[++handler->offset] = rgb[0];
     handler->lights[++handler->offset] = rgb[1];
     handler->offset++;
+    if (handler->offset % 160 == 0) {
+      lights(handler->lights);
+    }
     if (handler->offset >= 4*60) 
     {
       handler->offset = 0;
@@ -133,8 +138,8 @@ void computeLighting(float* buffer, int size, PortAudioRead* handler)
   fftwf_free(out);
 }
 
-PortAudioRead::PortAudioRead(SNDFILE *audioFile, int num_frames, int num_channels/*, uint8_t* lights*/) throw(std::string)
-    : audioFile(audioFile), num_frames(num_frames), num_channels(num_channels)//, lights(lights)
+PortAudioRead::PortAudioRead(SNDFILE *audioFile, int num_frames, int num_channels, uint8_t* lights) throw(std::string)
+    : audioFile(audioFile), num_frames(num_frames), num_channels(num_channels), lights(lights)
 {
   int ringbuffer_size = 16384;
   ringbuffer_ = static_cast<float *>(
@@ -264,7 +269,7 @@ int PortAudioRead::Callback(const void *input,
 
     if (playbackEnded)
     {
-      //computeLighting(outputBuffer, framesRead, handler);
+        computeLighting(outputBuffer, framesRead, handler);
 
         //handler->position = 0;
         //return paComplete;
@@ -309,7 +314,7 @@ void PortAudioRead::Start()
         ring_buffer_size_t num_read_samples = PaUtil_ReadRingBuffer(
             &pa_ringbuffer_, buffer, min_read_samples_);
 
-        //computeLighting(buffer, num_read_samples, this);
+        computeLighting(buffer, num_read_samples, this);
       }
       Pa_Sleep(5);
     }

@@ -1,8 +1,10 @@
 /**
- * author: Christophe Jolif (cjolif@gmail.com)
+ * author: Martin & Christophe Jolif 
  *
  * Apache License
  **/
+
+#include "include/EPI.h"
 
 #include <iostream>
 
@@ -48,28 +50,6 @@ static uint8_t state = 0b00000000;
 
 static struct spi_ioc_transfer xfer[3];
 
-/* = {
- { .tx_buf        = 0, // Header (zeros)
-   .rx_buf        = 0,
-   .len           = 4,
-   .speed_hz      = 8000000,
-   .delay_usecs   = 0,
-   .bits_per_word = 8,
-   .cs_change     = 0 },
- { .rx_buf        = 0, // Color payload
-   .speed_hz      = 8000000,
-   .delay_usecs   = 0,
-   .bits_per_word = 8,
-   .cs_change     = 0 },
- { .tx_buf        = 0, // Footer (zeros)
-   .rx_buf        = 0,
-   .speed_hz      = 8000000,
-   .delay_usecs   = 0,
-   .bits_per_word = 8,
-   .cs_change     = 0 }
-};
-*/
-
 static pid_t pid;
 
 static uint8_t buffer[60*4];
@@ -105,9 +85,9 @@ void initLights()
   xfer[2].cs_change = 0;
 }
 
-int lights(/*uint8_t ptr[]*/)
+int lights(uint8_t* ptr)
 {
-  xfer[1].tx_buf   = (unsigned long)buffer;
+  xfer[1].tx_buf   = (unsigned long)ptr;
   xfer[1].len      = 60 * 4; // numLEDS* 4? (len/4)
   xfer[2].len      = (60 /*numLEDS*/ + 15) / 16;
 
@@ -159,10 +139,19 @@ void stopMusic() {
 }
 
 void startLights() {
-  lights();
+  lights(buffer);
 }
 
 void stopLights() {
+  int i;
+  uint8_t stop[60*4];
+  for (i = 0; i < 60; i++) {
+    stop[i * 4] = 0x00;
+    stop[i * 4 + 1] = 0x00; // (b)
+    stop[i * 4 + 2] = 0x00; // (r)
+    stop[i * 4 + 3] = 0x00; // (g)
+  }
+  lights(stop);
 }
 
 void applyState() {
@@ -213,7 +202,7 @@ PortAudioRead* InitMusic()
      std::cerr << "Music file is not available" << std::endl;
      return NULL;
    } else {
-    return new PortAudioRead(snd_file, sf_info.frames, sf_info.channels/*, buffer*/);
+    return new PortAudioRead(snd_file, sf_info.frames, sf_info.channels, buffer);
    }
 }
 
