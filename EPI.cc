@@ -25,12 +25,12 @@
 
 #include "include/PortAudioRead.h"
 
-#define	LED1		        15
-#define LED2		        16
+#define	LED1		15
+#define LED2		16
 #define BUTTON1	      	11
 #define BUTTON2	      	18
 #define MOTOR1_RIGHT  	29
-#define MOTOR1_LEFT	    31
+#define MOTOR1_LEFT	31
 #define MOTOR1_ENABLE 	33
 #define MOTOR2_RIGHT   	36
 #define MOTOR2_LEFT     37
@@ -38,8 +38,8 @@
 
 #define START	0b00000001
 #define MOVE	0b00000010
-#define STOP  0b00000100
-#define RUN	  0b10000000
+#define STOP    0b00000100
+#define RUN     0b10000000
 
 static const char       *spiDev1  = "/dev/spidev1.0";
 static const uint8_t     spiBPW   = 8 ;
@@ -52,7 +52,9 @@ static struct spi_ioc_transfer xfer[3];
 
 static pid_t pid;
 
-static uint8_t buffer[60*4];
+static uint8_t initBuffer[60*4];
+
+static uint8_t stopBuffer[60*4];
 
 static PortAudioRead* pa_read;
 
@@ -60,10 +62,16 @@ void initLights()
 {
   int i;
   for (i = 0; i < 60; i++) {
-    buffer[i * 4] = 0xFF;
-    buffer[i * 4 + 1] = 0xFF; // (b)
-    buffer[i * 4 + 2] = 0x00; // (r)
-    buffer[i * 4 + 3] = 0x00; // (g)
+    initBuffer[i * 4] = 0xFF;
+    initBuffer[i * 4 + 1] = 0xFF; // (b)
+    initBuffer[i * 4 + 2] = 0x00; // (r)
+    initBuffer[i * 4 + 3] = 0x00; // (g)
+  }
+  for (i = 0; i < 60; i++) {
+    stopBuffer[i * 4] = 0x00;
+    stopBuffer[i * 4 + 1] = 0x00; // (b)
+    stopBuffer[i * 4 + 2] = 0x00; // (r)
+    stopBuffer[i * 4 + 3] = 0x00; // (g)
   }
   xfer[0].tx_buf = 0;
   xfer[0].rx_buf = 0;
@@ -87,6 +95,7 @@ void initLights()
 
 int lights(uint8_t* ptr)
 {
+  std::cout << "Update lights" << std::endl; 
   xfer[1].tx_buf   = (unsigned long)ptr;
   xfer[1].len      = 60 * 4; // numLEDS* 4? (len/4)
   xfer[2].len      = (60 /*numLEDS*/ + 15) / 16;
@@ -121,53 +130,35 @@ void scanButton(int button, int led, uint8_t mode)
 void startMusic() {
   std::cout << "Start Music" << std::endl;
   pa_read->Start();
-/*
-
-  pid = fork();
-  if (pid == 0) {
-    execl("/usr/bin/aplay", "aplay", "file.mp3", NULL);
-    printf("should not happen\n");
-  } else {
-    // parent just continue as is
-  }*/
 }
 
 void stopMusic() {
-  //if (pid != 0) {
-  //  kill(pid, SIGINT);
- // }
+  pa_read->Stop();
 }
 
 void startLights() {
-  lights(buffer);
+  lights(initBuffer);
 }
 
 void stopLights() {
-  int i;
-  uint8_t stop[60*4];
-  for (i = 0; i < 60; i++) {
-    stop[i * 4] = 0x00;
-    stop[i * 4 + 1] = 0x00; // (b)
-    stop[i * 4 + 2] = 0x00; // (r)
-    stop[i * 4 + 3] = 0x00; // (g)
-  }
-  lights(stop);
+  std::cout << "Stop Lights" << std::endl;
+  lights(stopBuffer);
 }
 
 void applyState() {
   if (((state & START) == START) && ((state & MOVE) == 0)) {
     state ^= MOVE;
-    startMusic();
     startLights();
     digitalWrite(MOTOR1_RIGHT, HIGH);
     digitalWrite(MOTOR1_LEFT, LOW);
-    softPwmWrite(MOTOR1_ENABLE, 1024);
+    //softPwmWrite(MOTOR1_ENABLE, 1024);
+    startMusic();
   } else if (((state & START) == 0) && ((state & MOVE) == MOVE)) {
     // stop
     state ^= MOVE;
     softPwmWrite(MOTOR1_ENABLE, 0);
-    stopMusic();
     stopLights();
+    stopMusic();
   }
 }
 
@@ -194,6 +185,13 @@ int spiSetup(int mode)
   return fd ;
 }
 
+void scanAndApplyState()
+{
+    //std::cout << "Scanning Button" << std::endl;
+    scanButton(BUTTON1, LED1, START);
+    applyState();
+}
+
 PortAudioRead* InitMusic()
 {
    SF_INFO sf_info;
@@ -202,7 +200,7 @@ PortAudioRead* InitMusic()
      std::cerr << "Music file is not available" << std::endl;
      return NULL;
    } else {
-    return new PortAudioRead(snd_file, sf_info.frames, sf_info.channels, buffer);
+     return new PortAudioRead(snd_file, sf_info.frames, sf_info.channels, lights, scanAndApplyState);
    }
 }
 
@@ -238,18 +236,21 @@ int main(int argc, char *argv[])
   
   pinMode(MOTOR1_RIGHT, OUTPUT);
   pinMode(MOTOR1_LEFT, OUTPUT);
-  softPwmCreate(MOTOR1_ENABLE, 0, 1024);
+  int rvalue = softPwmCreate(MOTOR1_ENABLE, 0, 1024);
+  if (rvalue != 0) {
+    printf("soft PWM did not initalize %s\n", strerror(errno));
+  }
   
   std::cout << "Phase 2 Done" << std::endl;
   
   digitalWrite(LED1, HIGH);
   delay(300);
   digitalWrite(LED1, LOW);
-  
-  state ^= START;
 
+  //state ^= START;
+  
   while ((state & RUN) == RUN) {
-   // scanButton(BUTTON1, LED1, START);
+    scanButton(BUTTON1, LED1, START);
     applyState();
     delay(1);
   }

@@ -121,16 +121,14 @@ void computeLighting(float* buffer, int size, PortAudioRead* handler)
     }
     hsv2rgb(360.f * float(i) / float(outSize), amplitude, amplitude, rgb);
     //std::cout << std::hex << rgb[0] << "/" << rgb[1] << "/" << rgb[2] << std::endl;
-    handler->lights[handler->offset] = 0xFF;
-    handler->lights[++handler->offset] = rgb[2];
-    handler->lights[++handler->offset] = rgb[0];
-    handler->lights[++handler->offset] = rgb[1];
+    handler->lightsBuffer[handler->offset] = 0xFF;
+    handler->lightsBuffer[++handler->offset] = rgb[2];
+    handler->lightsBuffer[++handler->offset] = rgb[0];
+    handler->lightsBuffer[++handler->offset] = rgb[1];
     handler->offset++;
-    if (handler->offset % 160 == 0) {
-      lights(handler->lights);
-    }
     if (handler->offset >= 4*60) 
     {
+      handler->lights(handler->lightsBuffer);
       handler->offset = 0;
     }
   }
@@ -138,8 +136,8 @@ void computeLighting(float* buffer, int size, PortAudioRead* handler)
   fftwf_free(out);
 }
 
-PortAudioRead::PortAudioRead(SNDFILE *audioFile, int num_frames, int num_channels, uint8_t* lights) throw(std::string)
-    : audioFile(audioFile), num_frames(num_frames), num_channels(num_channels), lights(lights)
+PortAudioRead::PortAudioRead(SNDFILE *audioFile, int num_frames, int num_channels, int (*lights)(uint8_t*), void (*cbFunc)()) throw(std::string)
+    : audioFile(audioFile), num_frames(num_frames), num_channels(num_channels), lights(lights), cbFunc(cbFunc)
 {
   int ringbuffer_size = 16384;
   ringbuffer_ = static_cast<float *>(
@@ -278,6 +276,12 @@ int PortAudioRead::Callback(const void *input,
     return paContinue;
 }
 
+void PortAudioRead::Stop()
+{
+  std::cout << "Stop Music" << std::endl;
+  stop = true;
+}
+
 void PortAudioRead::Start()
 {
     std::cout << "Play Music" << std::endl;
@@ -317,7 +321,12 @@ void PortAudioRead::Start()
         computeLighting(buffer, num_read_samples, this);
       }
       Pa_Sleep(5);
-    }
+      cbFunc();
+      if (stop) {
+        std::cout << "No more Music" << std::endl;
+        Pa_StopStream(pa_stream);
+      }
+   } 
 
     free(buffer);
 }
